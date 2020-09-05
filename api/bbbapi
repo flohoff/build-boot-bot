@@ -101,7 +101,8 @@ sub job_claim {
 	my $sql=$dbh->prepare("
 		update	jobs
 		set	claimed = ?,	
-			processing = now()::timestamp
+			processing = now()::timestamp,
+			status = 'claimed'
 		where	id = ?
 		and	claimed is null
 		and	processing is null
@@ -119,6 +120,46 @@ sub job_claim {
 		$status->{error}="Job already claimed";
 	} else {
 		$status->{status}="ok";
+	}
+
+	return $status;
+}
+
+sub job_submit {
+	my ($data) = @_;
+
+	if (!defined($data->{requirements})
+		|| ref $data->{requirements} ne 'ARRAY'
+		|| !defined($data->{variables})
+		|| ref $data->{variables} ne 'HASH'
+		|| !defined($data->{type}) {
+
+		print STDERR Dumper($data);
+
+		return { status => "fail", "error" => "Incomplete request" };
+	}
+
+	my $dbh=db_open();
+	my $sql=$dbh->prepare("
+		insert into jobs
+			( type, variables, requirements )
+			values
+			( ?, ?, ? )
+	") || die $DBI::errstr;
+
+	my $rc=$sql->execute($data->{type}, to_json($data->{variables}), to_json($data->{requirements})) || die $DBI::errstr;
+	my $id=$dbh->last_insert_id(undef,undef,undef,undef,{sequence=>'jobs_id_seq'});
+	$sql->finish();
+
+	my $status={};
+
+	if ($rc eq '0E0') {
+		$status->{status}="fail";
+		$status->{error}="No insert";
+	} else {
+		$status->{status}="ok";
+		$status->{id}=$id;
+		$status->{job}=job_fetch($id);
 	}
 
 	return $status;
@@ -169,8 +210,7 @@ sub job_filter {
 	my $sql=$dbh->prepare("
 		select	*
 		from	jobs
-		where	processing is null
-		and	returned is null;
+		where	status = 'waiting';
 	") || die $DBI::errstr;
 
 	$sql->execute() || die $DBI::errstr;
@@ -195,7 +235,7 @@ post '/v1/job/filter' => sub {
 	my $data=$self->req->json();
 	my $jobs=job_filter($data);
 
-	$self->render(json => $jobs );
+	$self->render(json => { status => 'ok', jobs => $jobs } );
 };
 
 get '/v1/job/:id/claim/:client' => sub {
@@ -227,7 +267,9 @@ post '/v1/job/submit' => sub {
 
 	my $data=$self->req->json();
 
-	$self->render(json => $data);
+	my $status=job_submit($data);
+
+	$self->render(json => $status);
 };
 
 $config=read_config();
