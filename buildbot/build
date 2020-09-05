@@ -19,30 +19,35 @@ updatetree() {
 	TREENAME=$(echo -n ${GITTREE} | tr -c 'a-z' '-')
 
 	if [ ! -d ${TREECACHE}/${TREENAME} ]; then
-		git clone ${GITTREE} ${TREECACHE}/${TREENAME}
+		git clone ${GITTREE} ${TREECACHE}/${TREENAME} \
+			2>&1 | tee -a ${BASE}/output/${JOBID}.log
 	else
-		( cd ${TREECACHE}/${TREENAME} ; git pull )
+		pushd ${TREECACHE}/${TREENAME}
+		git pull 2>&1 | tee -a ${BASE}/output/${JOBID}.log
+		popd
 	fi
 }
 
 rundocker() {
 
 	time docker run \
-		--rm \
-		-it \
-		-v ${BASE}/treecache:/treecache \
-		-v ${BASE}/config:/config \
-		-v ${BASE}/output:/output \
-		-v ${BASE}/scripts:/scripts \
-		-e TREECACHEDIR=/treecache \
-		-e OUTPUTDIR=/output \
-		-e BUILDHOST=$(hostname) \
-		-e GITTREE=${GITTREE} \
-		-e GITCOMMIT=${GITCOMMIT} \
-		-e JOBID=${JOBID} \
-		-e MACHINE=${MACHINE} \
-		cross \
-		/scripts/buildindocker
+			--rm \
+			-it \
+			-v ${BASE}/treecache:/treecache \
+			-v ${BASE}/config:/config \
+			-v ${BASE}/output:/output \
+			-v ${BASE}/scripts:/scripts \
+			-e TREECACHEDIR=/treecache \
+			-e OUTPUTDIR=/output \
+			-e BUILDHOST=$(hostname) \
+			-e GITTREE=${GITTREE} \
+			-e GITCOMMIT=${GITCOMMIT} \
+			-e JOBID=${JOBID} \
+			-e MACHINE=${MACHINE} \
+			cross \
+			/scripts/buildindocker \
+		2>&1 | tee -a ${BASE}/output/${JOBID}.log
+
 }
 
 [ -d ${BASE}/output ] || mkdir -p ${BASE}/output
