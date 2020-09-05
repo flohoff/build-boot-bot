@@ -1,0 +1,42 @@
+
+Submit job
+==========
+	bbb-submit
+		Arguments
+			-j -> jobtype - string
+			-r -> requirement - may be listed as often as wanted
+			-v -> key/value variable setting
+			-d -> depends on jobid $foo
+		Returns
+			jobid
+
+	bbb-submit \
+		-j build \
+		-r docker:buster \
+		-r arch:mips \
+		-v gittree=git://git.kernel.org/pub/scm/linux/kernel/git/mips/linux.git \
+		-v commit=HEAD \
+		-v machine=sb1250-bigendian
+
+	Returns the job number
+
+	bbb-submit \
+		-j boot \
+		-r sb1250* \
+		-d ${jobid} \
+		-v kernel=${jobid}
+
+
+BBB Config
+==========
+
+~/.bbb - Json content
+
+{
+	apiuser: 'flo',
+	apipassword': 'verysecret',
+	apiendpoint: 'https://pax.zz.de/bbb'
+	s3user: 'flo',
+	s3password': 'verysecret',
+	s3endpoint: 'https://pax.zz.de/minio'
+}
