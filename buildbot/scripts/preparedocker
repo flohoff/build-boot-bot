@@ -1,0 +1,9 @@
+#!/bin/bash
+
+BASE=$(readlink -f $(dirname $(readlink -f $0))/..)
+
+for dir in ${BASE}/dockerfiles/*; do
+	name=$(basename ${dir})
+	docker build -t bbb/$name $dir
+done
+
