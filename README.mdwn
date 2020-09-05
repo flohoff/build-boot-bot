@@ -1,4 +1,71 @@
 
+Buildbot
+========
+
+To prepare the docker images needed to build kernels run "preparedocker" 
+
+Api Dependencies
+================
+
+libfile-slurp-perl libmojo-server-fastcgi-perl libmojolicious-perl libjson-perl
+
+
+
+REST API 
+=========
+
+Job Status
+----------
+
+	curl -XGET https://nuc.dynamic.uucico.de/bbb/v1/job/1/status | jq
+
+	{
+	  "claimed": "p4",
+	  "id": 1,
+	  "processing": "2020-09-05 19:55:27.701255",
+	  "queued": "2020-09-05 18:38:29.626586",
+	  "requirements": [
+	    "docker:bbb/buster",
+	    "mips"
+	  ],
+	  "result": null,
+	  "returned": null,
+	  "type": "build",
+	  "uid": "flo",
+	  "variables": {
+	    "commit": "HEAD",
+	    "gittree": "git://git.kernel.org/pub/scm/linux/kernel/git/mips/linux.git",
+	    "machine": "sb1250-bigendian"
+          }	
+        }
+
+Filter jobs
+-----------
+
+To find a job matching my capabilities:
+
+	curl -XPOST -d '{ "type": "build", "capabilities": [ "docker:bbb/buster", "mipsel" ] }' \
+		https://nuc.dynamic.uucico.de/bbb/v1/job/filter
+
+Returns a list ob jobs.
+
+Claim a job
+-----------
+To claim a job for processing
+
+	curl -XGET https://nuc.dynamic.uucico.de/bbb/v1/job/1/claim/p4
+
+Returns a status with ok/fail and the job claimed
+
+	{
+	  "status": "fail"
+	  "error": "Job already claimed",
+	  "job": {
+ 		 ... 
+	    }
+	  },
+	}
+
 Submit job
 ==========
 	bbb-submit

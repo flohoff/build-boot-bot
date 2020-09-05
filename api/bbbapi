@@ -1,0 +1,237 @@
+#!/usr/bin/perl -w
+
+use strict;
+use utf8;
+use open ':std', ':encoding(UTF-8)';
+use Mojolicious::Lite;
+use JSON;
+use DBI;
+use DBD::Pg;
+use Carp qw/confess/;
+use FindBin qw($Bin);
+use File::Slurp qw/read_file/;
+use Data::Dumper;
+
+use feature qw( switch );
+no if $] >= 5.018, warnings => qw( experimental::smartmatch );
+
+my $config=undef;
+
+sub read_config {
+	my $config=from_json(read_file($Bin . "/config.json"),
+			{ utf8  => 1 } );
+
+	return $config;
+}
+
+sub db_open {
+        my $dbh=DBI->connect($config->{dbhost}, $config->{dbuser}, $config->{dbpass});
+        $dbh->{pg_enable_utf8} = 1;
+	if (!defined($dbh)) {
+		confess("No dbh handle");
+	}
+        return $dbh;
+}
+
+sub job_db_to_perl {
+	my ($row) = @_;
+
+	foreach my $elem ( qw/variables requirements result/) {
+		next if (!defined($row->{$elem}));
+		$row->{$elem}=from_json($row->{$elem});
+	}
+
+	return $row;
+}
+
+sub job_fetch {
+	my ($id) = @_;
+	
+	my $dbh=db_open();
+
+	# Fetch dependencies
+	my $sql=$dbh->prepare("
+		select	*
+		from	jobs	
+		where	id = ?
+	") || die $DBI::errstr;
+
+	$sql->execute($id) || die $DBI::errstr;
+	my $row=$sql->fetchrow_hashref();
+	$sql->finish();
+	$dbh->disconnect();
+
+	return job_db_to_perl($row);
+}
+
+sub job_result {
+	my ($id, $result) = @_;
+
+	my $dbh=db_open();
+	my $sql=$dbh->prepare("
+		update	jobs
+		set	result = ?,	
+			returned = now()::timestamp
+		where	id = ?
+		and	result is null
+		and	returned is null
+	") || die $DBI::errstr;
+
+	my $rc=$sql->execute(to_json($result), $id) || die $DBI::errstr;
+	$sql->finish();
+	
+	my $status={
+		job => job_fetch($id)
+	};
+
+	if ($rc eq '0E0') {
+		$status->{status}="fail";
+		$status->{error}="Row already has result";
+	} else {
+		$status->{status}="ok";
+	}
+
+	return $status;
+}
+
+sub job_claim {
+	my ($id, $client) = @_;
+
+	my $dbh=db_open();
+	my $sql=$dbh->prepare("
+		update	jobs
+		set	claimed = ?,	
+			processing = now()::timestamp
+		where	id = ?
+		and	claimed is null
+		and	processing is null
+	") || die $DBI::errstr;
+
+	my $rc=$sql->execute($client, $id) || die $DBI::errstr;
+	$sql->finish();
+
+	my $status={
+		job => job_fetch($id)
+	};
+
+	if ($rc eq '0E0') {
+		$status->{status}="fail";
+		$status->{error}="Job already claimed";
+	} else {
+		$status->{status}="ok";
+	}
+
+	return $status;
+}
+
+sub job_match_requirements_capabilities {
+	my ($reqs, $caps) = @_;
+
+	my %capshash;
+	$capshash{$_}++ for (@{$caps});
+
+	foreach my $req ( @{$reqs} ) {
+		if (!defined($capshash{$req})) {
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+sub job_matches {
+	my ($job, $filter) = @_;
+
+	# Simple string matches
+	foreach my $key (qw/type/) {
+		if (defined($filter->{$key})) {
+			if($job->{$key} ne $filter->{$key}) {
+				return 0;
+			}
+		}
+	}
+
+	if (defined($filter->{capabilities})) {
+		if (!job_match_requirements_capabilities($job->{requirements}, $filter->{capabilities})) {
+			return 0
+		}
+	}
+
+	return 1;
+}
+
+sub job_filter {
+	my ($filter) = @_;
+
+	# FIXME - Check dependencies
+
+	my $dbh=db_open();
+	my $sql=$dbh->prepare("
+		select	*
+		from	jobs
+		where	processing is null
+		and	returned is null;
+	") || die $DBI::errstr;
+
+	$sql->execute() || die $DBI::errstr;
+
+	my @matched;
+	while(my $row=$sql->fetchrow_hashref()) {
+		my $job=job_db_to_perl($row);
+
+		if (job_matches($job, $filter)) {
+			push @matched, $job;
+		}
+	}
+	$sql->finish();
+	$dbh->disconnect();
+
+	return \@matched;
+}
+
+post '/v1/job/filter' => sub {
+	my $self = shift;
+
+	my $data=$self->req->json();
+	my $jobs=job_filter($data);
+
+	$self->render(json => $jobs );
+};
+
+get '/v1/job/:id/claim/:client' => sub {
+	my $self = shift;
+
+	my $status=job_claim($self->param("id"), $self->param("client"));
+
+	$self->render(json => $status);
+};
+
+get '/v1/job/:id/status' => sub {
+	my $self = shift;
+
+	my $job=job_fetch($self->param("id"));
+
+	$self->render(json => $job);
+};
+
+post '/v1/job/:id/result' => sub {
+	my $self = shift;
+
+	my $status=job_result($self->param("id"), $self->req->json());
+
+	$self->render(json => $status);
+};
+
+post '/v1/job/submit' => sub {
+	my $self = shift;
+
+	my $data=$self->req->json();
+
+	$self->render(json => $data);
+};
+
+$config=read_config();
+
+app->renderer->default_format('json');
+app->start("fastcgi");
+#app->start();
