@@ -51,17 +51,37 @@ sub job_fetch {
 
 	# Fetch dependencies
 	my $sql=$dbh->prepare("
-		select	*
+		select	'child' jtype, *
 		from	jobs	
 		where	id = ?
+		union all
+		select	'parent' jtype, * 
+		from	jobs
+		where	id in ( select parent from job_depends where child = ? )
 	") || die $DBI::errstr;
 
-	$sql->execute($id) || die $DBI::errstr;
-	my $row=$sql->fetchrow_hashref();
+	$sql->execute($id, $id) || die $DBI::errstr;
+
+	my $jobrow;
+	my @depends;
+	while(my $row=$sql->fetchrow_hashref()) {
+		my $jtype=$row->{jtype};
+		delete($row->{jtype});
+		if ($jtype eq 'child') {
+			$jobrow=$row;
+		} else {
+			push @depends, job_db_to_perl($row);
+		}
+	}
+
 	$sql->finish();
 	$dbh->disconnect();
 
-	return job_db_to_perl($row);
+	my $job=job_db_to_perl($jobrow);
+	if (scalar @depends > 0) {
+		$job->{depends}=\@depends;
+	}
+	return $job;
 }
 
 sub job_result {
@@ -132,7 +152,7 @@ sub job_submit {
 		|| ref $data->{requirements} ne 'ARRAY'
 		|| !defined($data->{variables})
 		|| ref $data->{variables} ne 'HASH'
-		|| !defined($data->{type}) {
+		|| !defined($data->{type})) {
 
 		print STDERR Dumper($data);
 
@@ -140,6 +160,7 @@ sub job_submit {
 	}
 
 	my $dbh=db_open();
+
 	my $sql=$dbh->prepare("
 		insert into jobs
 			( type, variables, requirements )
@@ -151,8 +172,19 @@ sub job_submit {
 	my $id=$dbh->last_insert_id(undef,undef,undef,undef,{sequence=>'jobs_id_seq'});
 	$sql->finish();
 
-	my $status={};
+	# FIXME - Encapsulate into transaction?
+	# FIXME - Need to check whether dependency has not failed?
 
+	my $dsql=$dbh->prepare("
+		insert into job_depends ( parent, child ) values ( ?, ?);
+		") || die $DBI::errstr;
+	foreach my $dep ( @{$data->{depends}} ) {
+		$dsql->execute($dep, $id);
+	}
+	$sql->finish();
+
+
+	my $status={};
 	if ($rc eq '0E0') {
 		$status->{status}="fail";
 		$status->{error}="No insert";
