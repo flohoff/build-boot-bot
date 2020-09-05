@@ -11,6 +11,7 @@ use Carp qw/confess/;
 use FindBin qw($Bin);
 use File::Slurp qw/read_file/;
 use Data::Dumper;
+use List::Util;
 
 use feature qw( switch );
 no if $] >= 5.018, warnings => qw( experimental::smartmatch );
@@ -84,21 +85,55 @@ sub job_fetch {
 	return $job;
 }
 
+sub job_status_update_all_childs {
+	my ($dbh, $id) = @_;
+
+	# Find all child aka dependent jobs
+	my $sql=$dbh->prepare("
+		select	jd.child
+		from	job_depends jd
+		where	parent = ?
+	") || die $DBI::errstr;
+
+	my @childs;
+	my $rc=$sql->execute($id) || die $DBI::errstr;
+	while(my $row=$sql->fetchrow_hashref()) {
+		push @childs, $row->{child};
+	}
+	$sql->finish();
+
+	# We cant simply set childs status as there may be
+	# multiple parent dependencies so walk all childs
+	# and check all their parents
+	foreach my $child ( @childs ) {
+		job_status_update_from_parents($dbh, $child);
+	}
+}
+
 sub job_result {
-	my ($id, $result) = @_;
+	my ($id, $jobstatus, $result) = @_;
+
+	if ($jobstatus !~ /^(ok|failed)$/) {
+		return { status => "fail", "error" => "unknown status" };
+	}
+
+	# FIXME - Cant return status if parents are failed/waiting
 
 	my $dbh=db_open();
 	my $sql=$dbh->prepare("
 		update	jobs
 		set	result = ?,	
+			status = ?,
 			returned = now()::timestamp
 		where	id = ?
 		and	result is null
 		and	returned is null
 	") || die $DBI::errstr;
 
-	my $rc=$sql->execute(to_json($result), $id) || die $DBI::errstr;
+	my $rc=$sql->execute(to_json($result), $jobstatus, $id) || die $DBI::errstr;
 	$sql->finish();
+
+	job_status_update_all_childs($dbh, $id);
 	
 	my $status={
 		job => job_fetch($id)
@@ -145,6 +180,53 @@ sub job_claim {
 	return $status;
 }
 
+sub job_status_update {
+	my ($dbh, $id, $status) = @_;
+
+	my $sql=$dbh->prepare("
+		update	jobs
+		set	status = ?
+		where	id = ?
+	") || die $DBI::errstr;
+	
+	$sql->execute($status, $id) || die $DBI::errstr;
+	$sql->finish();
+
+	job_status_update_all_childs($dbh, $id);
+}
+
+sub job_status_update_from_parents {
+	my ($dbh, $id) = @_;
+
+	my $sql=$dbh->prepare("
+		select	status
+		from	jobs j join job_depends jd on ( j.id = jd.parent )
+		and	jd.child = ?
+	") || die $DBI::errstr;
+
+	my @status;
+	$sql->execute($id) || die $DBI::errstr;
+	while(my $row=$sql->fetchrow_hashref()) {
+		push @status, $row->{status};
+	}
+	$sql->finish();
+
+	if (List::Util::any { /cancelled|failed/ } @status) {
+		job_status_update($dbh, $id, "cancelled");
+		return;
+	}
+
+	if (List::Util::any { /waiting|claimed|submitted/ } @status) {
+		job_status_update($dbh, $id, "dependency");
+		return;
+	}
+
+	if (scalar @status == 0 || List::Util::all { /^ok$/ } @status) {
+		job_status_update($dbh, $id, "waiting");
+		return;
+	}
+}
+
 sub job_submit {
 	my ($data) = @_;
 
@@ -183,6 +265,7 @@ sub job_submit {
 	}
 	$sql->finish();
 
+	job_status_update_from_parents($dbh, $id);	
 
 	my $status={};
 	if ($rc eq '0E0') {
@@ -286,10 +369,10 @@ get '/v1/job/:id/status' => sub {
 	$self->render(json => $job);
 };
 
-post '/v1/job/:id/result' => sub {
+post '/v1/job/:id/result/:jobstatus' => sub {
 	my $self = shift;
 
-	my $status=job_result($self->param("id"), $self->req->json());
+	my $status=job_result($self->param("id"), $self->param("jobstatus"), $self->req->json());
 
 	$self->render(json => $status);
 };
