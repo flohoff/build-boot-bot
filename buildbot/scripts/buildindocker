@@ -1,0 +1,76 @@
+#!/bin/bash
+
+set -x
+set -e
+
+BUILDDIR=/build-${JOBID}
+INSTALLBASEDIR=/tmp
+
+. /config/machdef-${MACHINE}
+
+. /config/buildhost-default
+if [ -e /config/buildhost-${BUILDHOST} ]; then
+	. /config/buildhost-${BUILDHOST}
+fi
+
+MAKEADD="ARCH=${ARCH} CROSS_COMPILE=${ARCH}-linux-gnu- V=1"
+
+preparetree() {
+	TREENAME=$(echo -n ${GITTREE} | tr -c 'a-z' '-')
+
+	git clone ${TREECACHEDIR}/${TREENAME} ${BUILDDIR}
+
+	pushd ${BUILDDIR}
+	git checkout -b build ${GITCOMMIT}
+	popd
+}
+
+configure() {
+	pushd ${BUILDDIR}
+
+	cp ${DEFCONFIG} .config
+	make ARCH=${ARCH} olddefconfig
+
+	popd
+}
+
+build() {
+	pushd ${BUILDDIR}
+
+	for mtarget in ${MAKETARGETS}; do
+		make ${MAKEPARALLEL} ${MAKEADD} ${mtarget}
+	done
+
+	popd
+}
+
+install() {
+	pushd ${BUILDDIR}
+
+	INSTALLDIR=${INSTALLBASEDIR}/${JOBID}
+	mkdir -p ${INSTALLDIR}
+
+	for mtarget in ${MAKETARGETS}; do
+		case ${mtarget} in
+			vmlinux)
+				make ${MAKEADD} install INSTALL_PATH=${INSTALLDIR}
+				;;
+			modules)
+				make ${MAKEADD} modules_install INSTALL_MOD_PATH=${INSTALLDIR}
+				;;
+		esac
+	done
+
+	tar -C ${INSTALLBASEDIR} -zcvf ${OUTPUTDIR}/${JOBID}.tar.gz ${JOBID}
+
+	# Fix permissions for users outside of docker
+	chown --reference ${OUTPUTDIR} ${OUTPUTDIR}/${JOBID}.tar.gz
+
+	popd
+}
+
+preparetree
+configure
+build
+install
+

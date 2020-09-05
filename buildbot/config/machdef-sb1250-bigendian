@@ -1,0 +1,3 @@
+ARCH=mips
+DEFCONFIG=arch/mips/configs/sb1250_swarm_defconfig
+MAKETARGETS="vmlinux modules"

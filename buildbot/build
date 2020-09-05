@@ -1,0 +1,52 @@
+#!/bin/bash
+
+BASE=$(dirname $(readlink -f $0))
+HOSTNAME=$(hostname)
+GITTREE=git://git.kernel.org/pub/scm/linux/kernel/git/mips/linux.git
+GITCOMMIT=HEAD
+JOBID=${RANDOM}
+MACHINE=sb1250-bigendian 
+
+TREECACHE=${BASE}/treecache
+
+. ${BASE}/config/buildhost-default 
+if [ -f ${BASE}/config/buildhost-${HOSTNAME} ]; then
+	. ${BASE}/config/buildhost-${HOSTNAME}
+fi
+
+
+updatetree() {
+	TREENAME=$(echo -n ${GITTREE} | tr -c 'a-z' '-')
+
+	if [ ! -d ${TREECACHE}/${TREENAME} ]; then
+		git clone ${GITTREE} ${TREECACHE}/${TREENAME}
+	else
+		( cd ${TREECACHE}/${TREENAME} ; git pull )
+	fi
+}
+
+rundocker() {
+
+	time docker run \
+		--rm \
+		-it \
+		-v ${BASE}/treecache:/treecache \
+		-v ${BASE}/config:/config \
+		-v ${BASE}/output:/output \
+		-v ${BASE}/scripts:/scripts \
+		-e TREECACHEDIR=/treecache \
+		-e OUTPUTDIR=/output \
+		-e BUILDHOST=$(hostname) \
+		-e GITTREE=${GITTREE} \
+		-e GITCOMMIT=${GITCOMMIT} \
+		-e JOBID=${JOBID} \
+		-e MACHINE=${MACHINE} \
+		cross \
+		/scripts/buildindocker
+}
+
+[ -d ${BASE}/output ] || mkdir -p ${BASE}/output
+[ -d ${BASE}/treecache ] || mkdir -p ${BASE}/treecache
+
+updatetree
+rundocker
