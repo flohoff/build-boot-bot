@@ -69,6 +69,18 @@ Then run
 
 As soon as there are build jobs you should see builds beein scheduled.
 
+Command line client
+===================
+
+	bbb --api https://nuc.dynamic.uucico.de/bbb --status --job 1 --raw
+
+	bbb --api https://nuc.dynamic.uucico.de/bbb \
+		--submit --build \
+		-r docker:bbb/buster \
+		-v gitcommit=HEAD
+		-v gittree=git://git.kernel.org/pub/scm/linux/kernel/git/mips/linux.git
+		-v machine=sb1250-bigendian
+
 Build Boot Bot API
 ==================
 
@@ -203,4 +215,6 @@ Ideas and Todos
   - How to aggregate build/boot in ONE notification?
   - How to send notification if only a parent fails?
   - Notification on success/failure
-- Treecache as bare repository to save space
+- cmdline client
+  - download artifacts of job
+  - cancel job
