@@ -1,0 +1,17 @@
+#!/bin/bash
+
+set -x
+
+echo Command line arguments: $*
+
+JOBID=$1
+ARTIFACTDIR=$2
+CONFIG=$3
+
+cat ${CONFIG}
+jq . <${CONFIG}
+
+cp /bin/bash ${ARTIFACTDIR}
+
+rc=$[ $RANDOM % 2 ]
+exit ${rc}
