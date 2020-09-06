@@ -66,10 +66,14 @@ install() {
 		esac
 	done
 
-	tar -C ${INSTALLBASEDIR} -zcvf ${OUTPUTDIR}/${JOBID}.tar.gz ${JOBID}
+	version=$(git describe --long)-${ARCH}-${MACHINE}
+
+	OUTFILE=/artifacts/linux-${version}.tar.gz
+
+	tar -C ${INSTALLBASEDIR} -zcvf ${OUTFILE} ${JOBID}
 
 	# Fix permissions for users outside of docker
-	chown --reference ${OUTPUTDIR} ${OUTPUTDIR}/${JOBID}.tar.gz
+	chown --reference $(dirname ${OUTFILE}) ${OUTFILE}
 
 	popd
 }

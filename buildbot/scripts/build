@@ -60,10 +60,9 @@ rundocker() {
 			-it \
 			-v ${BASE}/treecache:/treecache \
 			-v ${BASE}/config:/config \
-			-v ${BASE}/output:/output \
+			-v ${ARTIFACTS}:/artifacts \
 			-v ${BASE}/scripts:/scripts \
 			-e TREECACHEDIR=/treecache \
-			-e OUTPUTDIR=${ARTIFACTS} \
 			-e BUILDHOST=$(hostname) \
 			-e JOBID=${JOBID} \
 			${DOCKERIMAGE} \
