@@ -11,14 +11,10 @@ use lib "$Bin/lib";
 
 use Data::Dumper;
 use Getopt::Long::Descriptive;
-use Cwd;
 use Carp qw/confess/;
 use File::Slurp;
-use File::Path qw/rmtree/;
 use JSON;
 use LWP::UserAgent;
-use File::Temp qw/tempfile/;
-use HTTP::DAV;
 
 sub api_get {
 	my ($opt, $ua, $uri) = @_;
