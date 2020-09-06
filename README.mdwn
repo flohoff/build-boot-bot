@@ -1,4 +1,50 @@
 
+Build Boot Bot
+==============
+
+For old Linux Kernel architectures like mips, arm, sparc etc it is
+very difficult to test the variety of machines supported. Most of
+the time the kernel is only compile tested and nobody knows if those
+machines still work. 
+
+This project tries to eliminate that by creating an automatic build infrastructure
+for kernels of those architectures. The input is a git tree, a commit id,
+an architecture and machine definition (Some machines may be big
+AND little endian e.g. the SiByte 1250 Swarm)
+
+Then the central job control api offers this job to one or more
+builders which then spawn a predefined docker container and build
+the tree. Resulting kernel, logfile, config etc are uploaded to
+a WebDAV directory.
+
+Another job which depends on the first then fetches the resulting
+kernel tar.gz and prepares a boot environment. This will be heavy
+machine specific. Some machines to have IPMI/LOM/BMC style methods
+for powering and resetting, most old machines wont. 
+
+So running/booting a machine will consist of preparing an nfs root
+by e.g. cloning an logical volume, putting the kernel modules in
+there, exporing per nfs, preparing the DHCP/bootp/RARP environment
+and powering up the machine for example by a WLAN power plug. 
+
+The machine will then boot until the PROM at which the boot bot
+will take over and log all serial output, and possibly
+emulating commands in prom to boot from network.
+
+It will be possible to add a list of tests which should be run 
+in the resulting NFS directory e.g. sometimes it will make
+sense to create a filesystem, unpack a rootfs and switch to
+the filesystem as NFS does not tend to break non coherency as
+much as SCSI DMA does.
+
+Or we could run parts of the LTP automatically, compile stuff,
+unpack a kernel etc.
+
+Afterwards the machine will be powered off and the nfs boot environment
+will be destroyed.
+
+All output will then be send back to the WebDAV directory.
+
 Buildbot
 ========
 
@@ -8,7 +54,7 @@ able to achieve with "adduser docker flo" for example.
 
 For installation use this:
 
-	apt-get install docker-ce jq 
+	apt-get install docker-ce jq libhttp-dav-perl
 
 To prepare the docker images needed to build kernels 
 
@@ -23,11 +69,12 @@ Then run
 
 As soon as there are build jobs you should see builds beein scheduled.
 
-BB
-Api Dependencies
-================
+Build Boot Bot API
+==================
 
-libfile-slurp-perl libmojo-server-fastcgi-perl libmojolicious-perl libjson-perl
+	apt-get install libfile-slurp-perl libmojo-server-fastcgi-perl \
+		libmojolicious-perl libjson-perl \
+		apache2 libapache2-mod-fcgid
 
 
 Job status values
@@ -134,31 +181,14 @@ Submit job
 		-v kernel=${jobid}
 
 
-BBB Config
-==========
-
-~/.bbb - Json content
-
-{
-	apiuser: 'flo',
-	apipassword': 'verysecret',
-	apiendpoint: 'https://pax.zz.de/bbb'
-	s3user: 'flo',
-	s3password': 'verysecret',
-	s3endpoint: 'https://pax.zz.de/minio'
-}
-
-
-
-
-
 Ideas and Todos
 ===============
 
 - Buildbot should autodiscover docker images
 - Timeout for jobs
-- If returned as failed cancel all dependencies
+- API should send DAV url for storage of the artifacts
 - Notifications?
   - How to aggregate build/boot in ONE notification?
   - How to send notification if only a parent fails?
   - Notification on success/failure
+- Treecache as bare repository to save space
