@@ -1,9 +1,20 @@
 #!/bin/bash
 
+set -x
+
 JOBID=$1
 CONFIGFILE=$2
 
-BASE=$(dirname $(readlink -f $0))
+if [ -z "${JOBID}" -o -z "${CONFIGFILE}" ]; then
+	echo "Need jobid and config file"
+	exit 1
+fi
+if [ ! -s "${CONFIGFILE}" ]; then
+	echo "Config file does not exist or is empty"
+	exit 1
+fi
+
+BASE=$(readlink -f $(dirname $(readlink -f $0))/..)
 HOSTNAME=$(hostname)
 TREECACHE=${BASE}/treecache
 
@@ -47,6 +58,7 @@ rundocker() {
 			-e TREECACHEDIR=/treecache \
 			-e OUTPUTDIR=/output \
 			-e BUILDHOST=$(hostname) \
+			-e JOBID=${JOBID} \
 			bbb/buster \
 			/scripts/buildindocker \
 		2>&1 | tee -a ${BASE}/output/${JOBID}.log
@@ -54,9 +66,9 @@ rundocker() {
 
 [ -d ${BASE}/output ] || mkdir -p ${BASE}/output
 [ -d ${BASE}/treecache ] || mkdir -p ${BASE}/treecache
-[ -d ${BASE}/config/builds ] || mkdir -p ${BASE}/config/builds
+[ -d ${BASE}/config/build ] || mkdir -p ${BASE}/config/build
 
-cp ${CONFIGFILE} ${BASE}/config/builds/${JOBID}
+cp ${CONFIGFILE} ${BASE}/config/build/${JOBID}
 
 updatetree
 rundocker
