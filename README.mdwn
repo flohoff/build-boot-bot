@@ -94,13 +94,51 @@ are, and who and when somebody claimed it to run the job.
 
 Everything else if out of scope of the central Job API.
 
-	apt-get install libfile-slurp-perl libmojo-server-fastcgi-perl \
+	git clone git://github.com/flohoff/build-boot-bot
+
+	apt-get install \
+		libfile-slurp-perl libmojo-server-fastcgi-perl \
 		libmojolicious-perl libjson-perl \
-		apache2 libapache2-mod-fcgid
+		apache2 libapache2-mod-fcgid postgresql
 
+	su - postgres -c createuser -s bbbapi
+	su - postgres -c creatdb -O bbbapi bbb
+	su - postgres -c "psql -c "alter user bbbapi encrypted password 'foobarbaz'"
+
+	psql -h localhost -U bbbapi bbb -f api/sql/schema.sql
+
+	cat <<EOF >api/config.json
+	{
+	"dbhost": "dbi:Pg:dbname=bbb;host=localhost",
+	"dbuser": "bbbapi",
+	"dbpass": "foobarbaz"
+	}
+	EOF
+
+Edit apache2 site config and add this for the API:
+
+	ScriptAlias /bbb/ /home/<user>/build-boot-bot/api/bbbapi/
+        <Location /bbb/>
+                Options ExecCGI
+                SetHandler fcgid-script
+		Require all granted
+        </Location>     
+
+And add a directory with WebDAV for your artifacts:;
+
+	<Directory "/var/www/docroot/artifacts/">
+		Require all granted
+		Dav On
+		Options Indexes FollowSymLinks MultiViews
+	</Directory>
+
+Enable the fcgid, dav and dav_fs module:
+
+	a2enmod fcgid
+	a2enmod dav
+	a2enmod dav_fs
+	systemctl restart apache2
 	
-
-
 Job status values
 =================
 
