@@ -20,30 +20,40 @@ use LWP::UserAgent;
 use File::Temp qw/tempfile/;
 use HTTP::DAV;
 
-sub job_get {
-	my ($ua, $opt) = @_;
+sub api_post {
+	my ($opt, $ua, $uri, $content) = @_;
 
-	# '{ "type": "build", "capabilities": [ "docker:bbb/buster", "mips" ] }'
-	
-	my $uri=sprintf("%s/v1/job/filter", $opt->api);
-        my $httpreq = HTTP::Request->new(POST => $uri);
-        $httpreq->content_type('application/json;charset=UTF-8');
-        $httpreq->content(to_json({
-			capabilities => $opt->capability,
-			type => "build"
-		}));
-
+	my $curi=sprintf("%s/%s", $opt->api, $uri);
+	my $httpreq = HTTP::Request->new(POST => $curi);
+	$httpreq->content_type('application/json;charset=UTF-8');
+	$httpreq->content(to_json($content));
 	my $response=$ua->request($httpreq);
+
+	if (!$response->is_success) {
+		print Dumper($response);
+		confess("Failed to reach api\n");
+	}
 
 	my $r=eval { from_json($response->decoded_content, { utf8  => 1 } ) };
 
 	if (!defined($r->{status}) || $r->{status} ne 'ok') {
-		confess("Request failed cause: %s", $r->{error});
+		confess(sprintf("Request failed - API returned cause: %s", $r->{error}));
 	}
 
-	# FIXME - Need to claim job
+	return $r;
+}
 
-	return $r->{jobs}[0];
+
+sub job_get {
+	my ($ua, $opt) = @_;
+
+	# '{ "type": "build", "capabilities": [ "docker:bbb/buster", "mips" ] }'
+	my $result=api_post($opt, $ua, "/v1/job/filter", {
+		capabilities => $opt->capability,
+		type => "build"
+	});
+
+	return $result->{jobs}[0];
 }
 
 sub artifact_dircreate {
@@ -60,6 +70,8 @@ sub artifact_dircreate {
 sub job_dispatch {
 	my ($ua, $opt, $job) = @_;
 
+	my $result={};
+
 	my $adir=artifact_dircreate($opt, $job);
 	my $configfile=sprintf("%s/config", $adir);
 
@@ -72,7 +84,7 @@ sub job_dispatch {
 	# FIXME Need a timeout
 	# FIXME store return code
 	
-	my $start=time();
+	$result->{start}=time();
 
 	my $pid = open(my $kid, "-|");
 	defined($pid) || confess "can't fork: $!";
@@ -84,10 +96,12 @@ sub job_dispatch {
 		close($kid);
 
 		my ($rc, $sig, $core) = ($? >> 8, $? & 127, $? & 128);	
-		my $stop=time();
 
-		printf("Runtime %s seconds - returned %d\n", $stop-$start, $rc);
-		printf($logfh "Runtime %s seconds - returned %d\n", $stop-$start, $rc);
+		$result->{stop}=time();
+		$result->{status}=$rc;
+
+		printf("Runtime %s seconds - returned %d\n", $result->{stop}-$result->{start}, $rc);
+		printf($logfh "Runtime %s seconds - returned %d\n", $result->{stop}-$result->{start}, $rc);
 	} else {
 		open(STDERR, ">&STDOUT");
 		exec($opt->buildscript, $job->{id}, $adir, $configfile) || die "can't exec program: $!";
@@ -95,9 +109,12 @@ sub job_dispatch {
 
 	close($logfh);
 
-	artifact_push($opt, $job, $adir);
+	my $pushrc=artifact_push($opt, $job, $adir);
+	$result->{pushstatus}=$pushrc;
 
 	rmtree($adir);
+
+	return $result;
 }
 
 sub artifact_push {
@@ -107,7 +124,7 @@ sub artifact_push {
 	my $dav = HTTP::DAV->new();
 	
 	$dav->open( -url => $url )
-   		|| confess("Couldn't open $url: " . $dav->message . "\n");
+		|| confess("Couldn't open $url: " . $dav->message . "\n");
 
 	my $dir=sprintf("%s/%s", $url, $job->{id});
 
@@ -115,20 +132,22 @@ sub artifact_push {
 
 	if ($dav->put(-local => $adir . "/*", -url => $dir)) {
 		print("successfully uploaded multiple files to $dir\n");
-	} else {
-		print("put failed: " . $dav->message . "\n");
+		return 0;
 	}
+
+	print("put failed: " . $dav->message . "\n");
+	return 1;
 }
 
 my ($opt, $usage) = describe_options(
-        $FindBin::Script . ' %o <some-arg>',
-        [ 'verbose|v',		"Verbose", { default => 0 } ],
+	$FindBin::Script . ' %o <some-arg>',
+	[ 'verbose|v',		"Verbose", { default => 0 } ],
 	[ 'api=s',		"API Endpoint", { required => 1 } ],
-        [ 'capability|c=s@',	"Capability to claim jobs" ],
+	[ 'capability|c=s@',	"Capability to claim jobs" ],
 	[ 'buildscript|b=s',	"Build script to call with job definition", { required => 1 } ],
 	[ 'artifactdir|a=s',	"Directory to create per job artifact directories", { default => "/tmp/" } ],
-        [],
-        [ 'help',		"print usage message and exit", { shortcircuit => 1 } ],
+	[],
+	[ 'help',		"print usage message and exit", { shortcircuit => 1 } ],
 );
 
 my $ua=LWP::UserAgent->new();
@@ -138,7 +157,14 @@ my $ua=LWP::UserAgent->new();
 
 while(42) {
 	my $js=job_get($ua, $opt);
-	my $rc=job_dispatch($ua, $opt, $js);
+	if (defined($js)) {
+
+		print Dumper($js);
+
+		my $result=job_dispatch($ua, $opt, $js);
+
+		print Dumper($result);
+
+	}
 	sleep(10);
 }
-
