@@ -72,3 +72,5 @@ cp ${CONFIGFILE} ${BASE}/config/build/${JOBID}
 
 updatetree
 rundocker
+
+rm -f ${BASE}/config/build/${JOBID}
