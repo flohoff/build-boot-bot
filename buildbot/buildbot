@@ -11,7 +11,6 @@ use lib "$Bin/lib";
 
 use Data::Dumper;
 use Getopt::Long::Descriptive;
-use Cwd;
 use Carp qw/confess/;
 use File::Slurp;
 use File::Path qw/rmtree/;
@@ -19,6 +18,22 @@ use JSON;
 use LWP::UserAgent;
 use File::Temp qw/tempfile/;
 use HTTP::DAV;
+use POSIX;
+use Sys::Hostname;
+
+sub api_get {
+        my ($opt, $ua, $uri) = @_;
+
+        my $curi=sprintf("%s/%s", $opt->api, $uri);
+        my $r=$ua->get($curi);
+        if (!$r->is_success) {
+                confess("Failed to reach api\n");
+        }
+
+        my $data=eval { from_json($r->decoded_content, { utf8  => 1 } ) };
+
+        return $data;
+}
 
 sub api_post {
 	my ($opt, $ua, $uri, $content) = @_;
@@ -36,13 +51,26 @@ sub api_post {
 
 	my $r=eval { from_json($response->decoded_content, { utf8  => 1 } ) };
 
-	if (!defined($r->{status}) || $r->{status} ne 'ok') {
-		confess(sprintf("Request failed - API returned cause: %s", $r->{error}));
-	}
+#	if (!defined($r->{status}) || $r->{status} ne 'ok') {
+#		confess(sprintf("Request failed - API returned cause: %s", $r->{error}));
+#	}
 
 	return $r;
 }
 
+sub job_claim {
+	my ($ua, $opt, $job) = @_;
+	my $uri=sprintf("/v1/job/%s/claim/%s", $job->{id}, $opt->sysname);
+	my $result=api_get($opt, $ua, $uri);
+
+	return ($result->{status} = 'ok');
+}
+
+sub job_return {
+	my ($ua, $opt, $job, $return) = @_;
+	my $uri=sprintf("/v1/job/%s/result/%s", $job->{id}, $return->{status});
+	my $result=api_post($opt, $ua, $uri, $return);
+}
 
 sub job_get {
 	my ($ua, $opt) = @_;
@@ -73,18 +101,19 @@ sub job_dispatch {
 	my $result={};
 
 	my $adir=artifact_dircreate($opt, $job);
-	my $configfile=sprintf("%s/config", $adir);
+	my $configfile=sprintf("%s/config.json", $adir);
 
 	open(my $fh, ">" . $configfile);
 	print $fh to_json($job->{variables});
 	close($fh);
-	
-	open(my $logfh, sprintf(">%s/logfile", $adir));
+
+	my $logfilename=sprintf("%s/logfile", $adir);
+	open(my $logfh, ">" . $logfilename);
 
 	# FIXME Need a timeout
 	# FIXME store return code
 	
-	$result->{start}=time();
+	$result->{start}=strftime("%Y-%m-%dT%H:%M:%S", localtime(time()));
 
 	my $pid = open(my $kid, "-|");
 	defined($pid) || confess "can't fork: $!";
@@ -97,20 +126,18 @@ sub job_dispatch {
 
 		my ($rc, $sig, $core) = ($? >> 8, $? & 127, $? & 128);	
 
-		$result->{stop}=time();
-		$result->{status}=$rc;
-
-		printf("Runtime %s seconds - returned %d\n", $result->{stop}-$result->{start}, $rc);
-		printf($logfh "Runtime %s seconds - returned %d\n", $result->{stop}-$result->{start}, $rc);
+		$result->{stop}=strftime("%Y-%m-%dT%H:%M:%S", localtime(time()));
+		$result->{status}=($rc == 0) ? "ok" : "failed";
 	} else {
 		open(STDERR, ">&STDOUT");
 		exec($opt->buildscript, $job->{id}, $adir, $configfile) || die "can't exec program: $!";
 	}
 
 	close($logfh);
+	system("gzip $logfilename");
 
-	my $pushrc=artifact_push($opt, $job, $adir);
-	$result->{pushstatus}=$pushrc;
+	my $pushfiles=artifact_push($opt, $job, $adir);
+	$result->{artifacts}=$pushfiles;
 
 	rmtree($adir);
 
@@ -132,39 +159,45 @@ sub artifact_push {
 
 	if ($dav->put(-local => $adir . "/*", -url => $dir)) {
 		print("successfully uploaded multiple files to $dir\n");
-		return 0;
+
+		my $cwd=getcwd();
+		chdir($adir),
+		my @files=glob("*");
+		chdir($cwd);
+
+		return \@files;
 	}
 
 	print("put failed: " . $dav->message . "\n");
-	return 1;
+	return undef;
 }
 
 my ($opt, $usage) = describe_options(
 	$FindBin::Script . ' %o <some-arg>',
 	[ 'verbose|v',		"Verbose", { default => 0 } ],
 	[ 'api=s',		"API Endpoint", { required => 1 } ],
+	[ 'sysname=s',		"System name for api", { default => hostname } ],
 	[ 'capability|c=s@',	"Capability to claim jobs" ],
 	[ 'buildscript|b=s',	"Build script to call with job definition", { required => 1 } ],
-	[ 'artifactdir|a=s',	"Directory to create per job artifact directories", { default => "/tmp/" } ],
+	[ 'artifactdir|a=s',	"Directory to create per job artifact directories", { default => "/tmp" } ],
 	[],
 	[ 'help',		"print usage message and exit", { shortcircuit => 1 } ],
 );
 
 my $ua=LWP::UserAgent->new();
 
-#$ua->add_handler("request_send",  sub { shift->dump; return });
-#$ua->add_handler("response_done", sub { shift->dump; return });
+$ua->add_handler("request_send",  sub { shift->dump; return });
+$ua->add_handler("response_done", sub { shift->dump; return });
 
 while(42) {
 	my $js=job_get($ua, $opt);
 	if (defined($js)) {
+		if (job_claim($ua, $opt, $js)) {
+			my $return=job_dispatch($ua, $opt, $js);
+			print Dumper($return);
 
-		print Dumper($js);
-
-		my $result=job_dispatch($ua, $opt, $js);
-
-		print Dumper($result);
-
+			job_return($ua, $opt, $js, $return);
+		}
 	}
 	sleep(10);
 }
