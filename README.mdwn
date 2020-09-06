@@ -72,9 +72,21 @@ As soon as there are build jobs you should see builds beein scheduled.
 Build Boot Bot API
 ==================
 
+The central REST API does not have a clue about what type of jobs are
+beeing submitted, scheduled, canceled etc. These are opaque jobs which
+carry dependencies on other jobs, requirements for "runners" to fullfill
+and variables e.g. the jobs input values.
+
+The API just keeps hold of which jobs exists, what their dependencies
+are, and who and when somebody claimed it to run the job.
+
+Everything else if out of scope of the central Job API.
+
 	apt-get install libfile-slurp-perl libmojo-server-fastcgi-perl \
 		libmojolicious-perl libjson-perl \
 		apache2 libapache2-mod-fcgid
+
+	
 
 
 Job status values
