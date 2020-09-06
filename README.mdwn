@@ -2,14 +2,44 @@
 Buildbot
 ========
 
-To prepare the docker images needed to build kernels run "preparedocker" 
+The buildbot uses docker to schedule builds. So the user you are running
+with needs to have docker permissions. Most of the time this should be 
+able to achieve with "adduser docker flo" for example.
 
+For installation use this:
+
+	apt-get install docker-ce jq 
+
+To prepare the docker images needed to build kernels 
+
+	buildbot/scripts/preparedocker
+
+Then run 
+
+	buildbot/buildbot \
+		--api https://nuc.dynamic.uucico.de/bbb \
+		-c docker:bbb/buster \
+		-b $PWD/scripts/build
+
+As soon as there are build jobs you should see builds beein scheduled.
+
+BB
 Api Dependencies
 ================
 
 libfile-slurp-perl libmojo-server-fastcgi-perl libmojolicious-perl libjson-perl
 
 
+Job status values
+=================
+
+	submitted	- Submitted by client
+	waiting 	- Waiting for client to claim
+	claimed 	- Claimed by client
+	ok		- Returned by client ok
+	failed		- Returned by client failed
+	cancelled	- Canceled - Parent failed
+	dependency	- Waiting for dependency
 
 REST API 
 =========
@@ -68,6 +98,16 @@ Returns a status with ok/fail and the job claimed
 
 Submit job
 ==========
+
+To submit a new job:
+
+	curl -XPOST -d '{ "type": "build", "requirements": [ "docker:bbb/buster" ], "variables": { "foo": "bar" }}' https://nuc.dynamic.uucico.de/bbb/v1/job/submit
+
+Returns a status ok/fail, the job id and the job json itself
+
+
+Submit job
+==========
 	bbb-submit
 		Arguments
 			-j -> jobtype - string
@@ -107,3 +147,18 @@ BBB Config
 	s3password': 'verysecret',
 	s3endpoint: 'https://pax.zz.de/minio'
 }
+
+
+
+
+
+Ideas and Todos
+===============
+
+- Buildbot should autodiscover docker images
+- Timeout for jobs
+- If returned as failed cancel all dependencies
+- Notifications?
+  - How to aggregate build/boot in ONE notification?
+  - How to send notification if only a parent fails?
+  - Notification on success/failure
