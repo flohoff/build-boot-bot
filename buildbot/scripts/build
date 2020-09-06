@@ -3,7 +3,8 @@
 set -x
 
 JOBID=$1
-CONFIGFILE=$2
+ARTIFACTS=$2
+CONFIGFILE=$3
 DEFAULTDOCKERIMAGE=bbb/buster
 
 if [ -z "${JOBID}" -o -z "${CONFIGFILE}" ]; then
@@ -38,11 +39,10 @@ updatetree() {
 	TREENAME=$(echo -n ${GITTREE} | tr -c 'a-z' '-')
 
 	if [ ! -d ${TREECACHE}/${TREENAME} ]; then
-		git clone ${GITTREE} ${TREECACHE}/${TREENAME} \
-			2>&1 | tee -a ${BASE}/output/${JOBID}.log
+		git clone ${GITTREE} ${TREECACHE}/${TREENAME} 
 	else
 		pushd ${TREECACHE}/${TREENAME}
-		git pull 2>&1 | tee -a ${BASE}/output/${JOBID}.log
+		git pull 
 		popd
 	fi
 }
@@ -63,15 +63,13 @@ rundocker() {
 			-v ${BASE}/output:/output \
 			-v ${BASE}/scripts:/scripts \
 			-e TREECACHEDIR=/treecache \
-			-e OUTPUTDIR=/output \
+			-e OUTPUTDIR=${ARTIFACTS} \
 			-e BUILDHOST=$(hostname) \
 			-e JOBID=${JOBID} \
 			${DOCKERIMAGE} \
-			/scripts/buildindocker \
-		2>&1 | tee -a ${BASE}/output/${JOBID}.log
+			/scripts/buildindocker 
 }
 
-[ -d ${BASE}/output ] || mkdir -p ${BASE}/output
 [ -d ${BASE}/treecache ] || mkdir -p ${BASE}/treecache
 [ -d ${BASE}/config/build ] || mkdir -p ${BASE}/config/build
 

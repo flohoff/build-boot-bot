@@ -18,6 +18,7 @@ use File::Path qw/rmtree/;
 use JSON;
 use LWP::UserAgent;
 use File::Temp qw/tempfile/;
+use HTTP::DAV;
 
 sub job_get {
 	my ($ua, $opt) = @_;
@@ -88,7 +89,34 @@ sub job_dispatch {
 		printf("Runtime %s seconds - returned %d\n", $stop-$start, $rc);
 		printf($logfh "Runtime %s seconds - returned %d\n", $stop-$start, $rc);
 	} else {
-		exec($opt->buildscript, $job->{id}, $configfile) || die "can't exec program: $!";
+		open(STDERR, ">&STDOUT");
+		exec($opt->buildscript, $job->{id}, $adir, $configfile) || die "can't exec program: $!";
+	}
+
+	close($logfh);
+
+	artifact_push($opt, $job, $adir);
+
+	rmtree($adir);
+}
+
+sub artifact_push {
+	my ($opt, $job, $adir) = @_;
+
+	my $url="https://nuc.dynamic.uucico.de/artifacts";
+	my $dav = HTTP::DAV->new();
+	
+	$dav->open( -url => $url )
+   		|| confess("Couldn't open $url: " . $dav->message . "\n");
+
+	my $dir=sprintf("%s/%s", $url, $job->{id});
+
+	$dav->mkcol( -url => $dir ) || printf("Oops - directory already exists\n");
+
+	if ($dav->put(-local => $adir . "/*", -url => $dir)) {
+		print("successfully uploaded multiple files to $dir\n");
+	} else {
+		print("put failed: " . $dav->message . "\n");
 	}
 }
 
