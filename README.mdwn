@@ -99,7 +99,8 @@ Everything else if out of scope of the central Job API.
 	apt-get install \
 		libfile-slurp-perl libmojo-server-fastcgi-perl \
 		libmojolicious-perl libjson-perl \
-		apache2 libapache2-mod-fcgid postgresql
+		postgresql libdbd-pg-perl \
+		apache2 libapache2-mod-fcgid 
 
 	su - postgres -c createuser -s bbbapi
 	su - postgres -c creatdb -O bbbapi bbb
