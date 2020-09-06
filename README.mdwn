@@ -94,6 +94,9 @@ are, and who and when somebody claimed it to run the job.
 
 Everything else if out of scope of the central Job API.
 
+Installation
+------------
+
 	git clone git://github.com/flohoff/build-boot-bot
 
 	apt-get install \
@@ -101,9 +104,11 @@ Everything else if out of scope of the central Job API.
 		libmojolicious-perl libjson-perl \
 		apache2 libapache2-mod-fcgid postgresql
 
-	su - postgres -c createuser -s bbbapi
-	su - postgres -c creatdb -O bbbapi bbb
-	su - postgres -c "psql -c "alter user bbbapi encrypted password 'foobarbaz'"
+	service postgres start
+
+	su - postgres -c "createuser -s bbbapi"
+	su - postgres -c "createdb -O bbbapi bbb"
+	su - postgres -c "psql -c \"alter user bbbapi encrypted password 'foobarbaz';\""
 
 	psql -h localhost -U bbbapi bbb -f api/sql/schema.sql
 
@@ -126,18 +131,23 @@ Edit apache2 site config and add this for the API:
 
 And add a directory with WebDAV for your artifacts:;
 
-	<Directory "/var/www/docroot/artifacts/">
+	<Directory "/var/www/html/artifacts/">
 		Require all granted
 		Dav On
 		Options Indexes FollowSymLinks MultiViews
 	</Directory>
+
+And create the directory
+	
+	mkdir /var/www/html/artifacts
+	chown www-data.www-data /var/www/html/artifacts
 
 Enable the fcgid, dav and dav_fs module:
 
 	a2enmod fcgid
 	a2enmod dav
 	a2enmod dav_fs
-	systemctl restart apache2
+	service apache2 restart
 	
 Job status values
 =================
