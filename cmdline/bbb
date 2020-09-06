@@ -1,0 +1,151 @@
+#!/usr/bin/perl -w
+
+use strict;
+use open IO => ":encoding(utf-8)";
+use open ':std';
+use Modern::Perl '2014';
+use experimental 'smartmatch';
+
+use FindBin qw($Bin);
+use lib "$Bin/lib";
+
+use Data::Dumper;
+use Getopt::Long::Descriptive;
+use Cwd;
+use Carp qw/confess/;
+use File::Slurp;
+use File::Path qw/rmtree/;
+use JSON;
+use LWP::UserAgent;
+use File::Temp qw/tempfile/;
+use HTTP::DAV;
+
+sub api_get {
+	my ($opt, $ua, $uri) = @_;
+
+	my $curi=sprintf("%s/%s", $opt->api, $uri);
+	my $r=$ua->get($curi);
+        if (!$r->is_success) {
+                confess("Failed to reach api\n");
+        }
+
+	my $data=eval { from_json($r->decoded_content, { utf8  => 1 } ) };
+
+	return $data;
+}
+
+sub api_post {
+	my ($opt, $ua, $uri, $content) = @_;
+
+	my $curi=sprintf("%s/%s", $opt->api, $uri);
+	my $httpreq = HTTP::Request->new(POST => $curi);
+	$httpreq->content_type('application/json;charset=UTF-8');
+	$httpreq->content(to_json($content));
+	my $response=$ua->request($httpreq);
+
+	if (!$response->is_success) {
+		print Dumper($response);
+		confess("Failed to reach api\n");
+	}
+
+	my $r=eval { from_json($response->decoded_content, { utf8  => 1 } ) };
+
+	if (!defined($r->{status}) || $r->{status} ne 'ok') {
+		confess(sprintf("Request failed - API returned cause: %s", $r->{error}));
+	}
+
+	return $r;
+}
+
+sub variables_format {
+	my ($vararray) = @_;
+	my $vars={};
+
+	foreach my $var ( @{$vararray} ) {
+		my ($key, $value)=split("=", $var, 2);
+		$vars->{$key}=$value;
+	}
+
+	return $vars;
+}
+
+# '{ "type": "build", "requirements": [ "docker:bbb/buster" ], "variables": { "foo": "bar" }}'
+sub job_submit {
+	my ($opt, $ua) = @_;
+
+	my $job = {
+		type => $opt->type,
+		requirements => $opt->requirement,
+		variables => variables_format($opt->variable)
+	};
+
+	if ($opt->depends) {
+		$job->{depends}=$opt->depends;
+	}
+
+	my $r=api_post($opt, $ua, "/v1/job/submit", $job);
+
+	print Dumper($r);
+}
+
+sub job_status {
+	my ($opt, $ua) = @_;
+
+	if (!defined($opt->job)) {
+		printf("Need job");
+		exit 0;
+	}
+
+	my $data=api_get($opt, $ua, sprintf("/v1/job/%d/status", $opt->job));
+
+	if ($opt->raw) {
+		print to_json($data);
+	} else {
+		# FIXME Pretty pring - Template?
+		print Dumper($data);
+	}
+}
+
+#my $config=decode_json(read_file(glob("~/.bbb"), { err_mode => "quiet" } ) // "{}");
+
+my ($opt, $usage) = describe_options(
+	$FindBin::Script . ' %o <some-arg>',
+	[ 'api=s',				"API Endpoint", { required => 1 } ],
+	[ 'job=i',				"Job id" ],
+	[ 'raw',				"Raw output of returned json object" ],
+	[ 'requirement|r=s@',			"Requirements bot has to fulfill" ],
+	[ 'variable|v=s@',			"Variables for this job" ],
+	[ 'depends|d=s@',			"Job dependency" ],
+	[ "type" => hidden => {
+		default => "build",
+		one_of => [
+				[ "build"		=> "Submit build job" ],
+				[ "boot"		=> "Submit boot job" ],
+			]
+		}
+	],
+	[ "cmd" => hidden => {
+		default => "status",
+		one_of => [
+				[ "status"		=> "Request job status" ],
+				[ "submit"		=> "Submit job" ],
+			]
+		}
+	],
+	[],
+	[ 'help',		"print usage message and exit", { shortcircuit => 1 } ],
+);
+
+my $ua=LWP::UserAgent->new();
+#$ua->add_handler("request_send",  sub { shift->dump; return });
+#$ua->add_handler("response_done", sub { shift->dump; return });
+
+given($opt->cmd) {
+	when("status") {
+		job_status($opt, $ua);
+	}
+	when("submit") {
+		job_submit($opt, $ua);
+	}
+}
+
