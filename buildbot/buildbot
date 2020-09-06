@@ -14,6 +14,7 @@ use Getopt::Long::Descriptive;
 use Cwd;
 use Carp qw/confess/;
 use File::Slurp;
+use File::Path qw/rmtree/;
 use JSON;
 use LWP::UserAgent;
 use File::Temp qw/tempfile/;
@@ -44,20 +45,33 @@ sub job_get {
 	return $r->{jobs}[0];
 }
 
+sub artifact_dircreate {
+	my ($opt, $job) = @_;
+
+	my $dir=sprintf("%s/%s", $opt->artifactdir, $job->{id});
+
+	rmtree($dir);
+	mkdir($dir);
+
+	return $dir;
+}
+
 sub job_dispatch {
 	my ($ua, $opt, $job) = @_;
 
-	my ($fh, $filename) = tempfile();
+	my $adir=artifact_dircreate($opt, $job);
+	my $configfile=sprintf("%s/config", $adir);
+
+	open(my $fh, ">" . $configfile);
 	print $fh to_json($job->{variables});
 	close($fh);
-
-	my $cmd=sprintf("%s %s %s", $opt->buildscript, $job->{id}, $filename);
+	
+	open(my $logfh, sprintf(">%s/logfile"));
 
 	# FIXME Need a timeout
 	# FIXME Log output to somewhere
 	# FIXME store return code
-	printf("Running %s\n", $cmd);
-
+	
 	my $start=time();
 
 	my $pid = open(my $kid, "-|");
@@ -65,6 +79,7 @@ sub job_dispatch {
 	if ($pid) {
 		while (<$kid>) {
 			print $_;
+			print $logfh $_;
 		}
 		close($kid);
 
@@ -73,7 +88,7 @@ sub job_dispatch {
 
 		printf("Runtime %s seconds - returned %d\n", $stop-$start, $rc);
 	} else {
-		exec($opt->buildscript, $job->{id}, $filename) || die "can't exec program: $!";
+		exec($opt->buildscript, $job->{id}, $configfile) || die "can't exec program: $!";
 	}
 }
 
@@ -83,6 +98,7 @@ my ($opt, $usage) = describe_options(
 	[ 'api=s',		"API Endpoint", { required => 1 } ],
         [ 'capability|c=s@',	"Capability to claim jobs" ],
 	[ 'buildscript|b=s',	"Build script to call with job definition", { required => 1 } ],
+	[ 'artifactdir|a=s',	"Directory to create per job artifact directories", { default => "/tmp/" } ],
         [],
         [ 'help',		"print usage message and exit", { shortcircuit => 1 } ],
 );
