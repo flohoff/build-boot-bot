@@ -66,10 +66,9 @@ sub job_dispatch {
 	print $fh to_json($job->{variables});
 	close($fh);
 	
-	open(my $logfh, sprintf(">%s/logfile"));
+	open(my $logfh, sprintf(">%s/logfile", $adir));
 
 	# FIXME Need a timeout
-	# FIXME Log output to somewhere
 	# FIXME store return code
 	
 	my $start=time();
@@ -87,6 +86,7 @@ sub job_dispatch {
 		my $stop=time();
 
 		printf("Runtime %s seconds - returned %d\n", $stop-$start, $rc);
+		printf($logfh "Runtime %s seconds - returned %d\n", $stop-$start, $rc);
 	} else {
 		exec($opt->buildscript, $job->{id}, $configfile) || die "can't exec program: $!";
 	}
