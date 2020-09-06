@@ -57,7 +57,24 @@ sub job_dispatch {
 	# FIXME Log output to somewhere
 	# FIXME store return code
 	printf("Running %s\n", $cmd);
-	system($cmd);
+
+	my $start=time();
+
+	my $pid = open(my $kid, "-|");
+	defined($pid) || confess "can't fork: $!";
+	if ($pid) {
+		while (<$kid>) {
+			print $_;
+		}
+		close($kid);
+
+		my ($rc, $sig, $core) = ($? >> 8, $? & 127, $? & 128);	
+		my $stop=time();
+
+		printf("Runtime %s seconds - returned %d\n", $stop-$start, $rc);
+	} else {
+		exec($opt->buildscript, $job->{id}, $filename) || die "can't exec program: $!";
+	}
 }
 
 my ($opt, $usage) = describe_options(
