@@ -54,7 +54,9 @@ able to achieve with "adduser docker flo" for example.
 
 For installation use this:
 
-	apt-get install docker-ce jq libhttp-dav-perl
+	apt-get install docker-ce jq libhttp-dav-perl \
+		libmodern-perl-perl libgetopt-long-descriptive-perl \
+		libwww-perl libhttp-dav-perl
 
 To prepare the docker images needed to build kernels 
 
