@@ -39,7 +39,7 @@ updatetree() {
 	TREENAME=$(echo -n ${GITTREE} | tr -c 'a-z' '-')
 
 	if [ ! -d ${TREECACHE}/${TREENAME} ]; then
-		git clone ${GITTREE} ${TREECACHE}/${TREENAME} 
+		git clone --bare ${GITTREE} ${TREECACHE}/${TREENAME} 
 	else
 		pushd ${TREECACHE}/${TREENAME}
 		git pull 
