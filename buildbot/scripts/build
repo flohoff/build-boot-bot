@@ -4,6 +4,7 @@ set -x
 
 JOBID=$1
 CONFIGFILE=$2
+DEFAULTDOCKERIMAGE=bbb/buster
 
 if [ -z "${JOBID}" -o -z "${CONFIGFILE}" ]; then
 	echo "Need jobid and config file"
@@ -48,6 +49,12 @@ updatetree() {
 
 rundocker() {
 
+	DOCKERIMAGE=$(jq -r .dockerimage <${CONFIGFILE})
+
+	if [ "${DOCKERIMAGE}" = "null" ]; then
+		DOCKERIMAGE=${DEFAULTDOCKERIMAGE}
+	fi
+
 	time docker run \
 			--rm \
 			-it \
@@ -59,7 +66,7 @@ rundocker() {
 			-e OUTPUTDIR=/output \
 			-e BUILDHOST=$(hostname) \
 			-e JOBID=${JOBID} \
-			bbb/buster \
+			${DOCKERIMAGE} \
 			/scripts/buildindocker \
 		2>&1 | tee -a ${BASE}/output/${JOBID}.log
 }
