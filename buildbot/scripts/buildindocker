@@ -5,6 +5,11 @@ set -e
 
 BUILDDIR=/build-${JOBID}
 INSTALLBASEDIR=/tmp
+CONFIG=/config/build/${JOBID}
+
+MACHINE=$(jq -r .machine <${CONFIG})
+GITTREE=$(jq -r .gittree <${CONFIG})
+GITCOMMIT=$(jq -r .commit <${CONFIG})
 
 . /config/machdef-${MACHINE}
 

@@ -1,12 +1,10 @@
 #!/bin/bash
 
+JOBID=$1
+CONFIGFILE=$2
+
 BASE=$(dirname $(readlink -f $0))
 HOSTNAME=$(hostname)
-GITTREE=git://git.kernel.org/pub/scm/linux/kernel/git/mips/linux.git
-GITCOMMIT=HEAD
-JOBID=${RANDOM}
-MACHINE=sb1250-bigendian 
-
 TREECACHE=${BASE}/treecache
 
 . ${BASE}/config/buildhost-default 
@@ -14,8 +12,17 @@ if [ -f ${BASE}/config/buildhost-${HOSTNAME} ]; then
 	. ${BASE}/config/buildhost-${HOSTNAME}
 fi
 
-
 updatetree() {
+
+	# Get tree from config file and make it fs flat
+	# for example
+	#
+	# git://git.kernel.org/pub/scm/linux/kernel/git/mips/linux.git
+	# git---git-kernel-org-pub-scm-linux-kernel-git-mips-linux-git
+	#
+	# and then update the tree by pulling if it exists or clone it
+	# 
+	GITTREE=$(jq -r .gittree <${CONFIGFILE})
 	TREENAME=$(echo -n ${GITTREE} | tr -c 'a-z' '-')
 
 	if [ ! -d ${TREECACHE}/${TREENAME} ]; then
@@ -40,18 +47,16 @@ rundocker() {
 			-e TREECACHEDIR=/treecache \
 			-e OUTPUTDIR=/output \
 			-e BUILDHOST=$(hostname) \
-			-e GITTREE=${GITTREE} \
-			-e GITCOMMIT=${GITCOMMIT} \
-			-e JOBID=${JOBID} \
-			-e MACHINE=${MACHINE} \
-			cross \
+			bbb/buster \
 			/scripts/buildindocker \
 		2>&1 | tee -a ${BASE}/output/${JOBID}.log
-
 }
 
 [ -d ${BASE}/output ] || mkdir -p ${BASE}/output
 [ -d ${BASE}/treecache ] || mkdir -p ${BASE}/treecache
+[ -d ${BASE}/config/builds ] || mkdir -p ${BASE}/config/builds
+
+cp ${CONFIGFILE} ${BASE}/config/builds/${JOBID}
 
 updatetree
 rundocker

@@ -1,0 +1,83 @@
+#!/usr/bin/perl -w
+
+use strict;
+use open IO => ":encoding(utf-8)";
+use open ':std';
+use Modern::Perl '2014';
+use experimental 'smartmatch';
+
+use FindBin qw($Bin);
+use lib "$Bin/lib";
+
+use Data::Dumper;
+use Getopt::Long::Descriptive;
+use Cwd;
+use Carp qw/confess/;
+use File::Slurp;
+use JSON;
+use LWP::UserAgent;
+use File::Temp qw/tempfile/;
+
+sub job_get {
+	my ($ua, $opt) = @_;
+
+	# '{ "type": "build", "capabilities": [ "docker:bbb/buster", "mips" ] }'
+	
+	my $uri=sprintf("%s/v1/job/filter", $opt->api);
+        my $httpreq = HTTP::Request->new(POST => $uri);
+        $httpreq->content_type('application/json;charset=UTF-8');
+        $httpreq->content(to_json({
+			capabilities => $opt->capability,
+			type => "build"
+		}));
+
+	my $response=$ua->request($httpreq);
+
+	my $r=eval { from_json($response->decoded_content, { utf8  => 1 } ) };
+
+	if (!defined($r->{status}) || $r->{status} ne 'ok') {
+		confess("Request failed cause: %s", $r->{error});
+	}
+
+	# FIXME - Need to claim job
+
+	return $r->{jobs}[0];
+}
+
+sub job_dispatch {
+	my ($ua, $opt, $job) = @_;
+
+	my ($fh, $filename) = tempfile();
+	print $fh to_json($job->{variables});
+	close($fh);
+
+	my $cmd=sprintf("%s %s %s", $opt->buildscript, $job->{id}, $filename);
+
+	# FIXME Need a timeout
+	# FIXME Log output to somewhere
+	# FIXME store return code
+	printf("Running %s\n", $cmd);
+	system($cmd);
+}
+
+my ($opt, $usage) = describe_options(
+        $FindBin::Script . ' %o <some-arg>',
+        [ 'verbose|v',		"Verbose", { default => 0 } ],
+	[ 'api=s',		"API Endpoint", { required => 1 } ],
+        [ 'capability|c=s@',	"Capability to claim jobs" ],
+	[ 'buildscript|b=s',	"Build script to call with job definition", { required => 1 } ],
+        [],
+        [ 'help',		"print usage message and exit", { shortcircuit => 1 } ],
+);
+
+my $ua=LWP::UserAgent->new();
+
+#$ua->add_handler("request_send",  sub { shift->dump; return });
+#$ua->add_handler("response_done", sub { shift->dump; return });
+
+while(42) {
+	my $js=job_get($ua, $opt);
+	my $rc=job_dispatch($ua, $opt, $js);
+	sleep(10);
+}
+
