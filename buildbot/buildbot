@@ -25,9 +25,10 @@ sub api_get {
         my ($opt, $ua, $uri) = @_;
 
         my $curi=sprintf("%s/%s", $opt->api, $uri);
-        my $r=$ua->get($curi);
-        if (!$r->is_success) {
-                confess("Failed to reach api\n");
+        my $r=eval { $ua->get($curi) };
+        if (!defined($r) || !$r->is_success) {
+                carp("Failed to reach api\n");
+		return undef;
         }
 
         my $data=eval { from_json($r->decoded_content, { utf8  => 1 } ) };
@@ -42,18 +43,14 @@ sub api_post {
 	my $httpreq = HTTP::Request->new(POST => $curi);
 	$httpreq->content_type('application/json;charset=UTF-8');
 	$httpreq->content(to_json($content));
-	my $response=$ua->request($httpreq);
+	my $response=eval { $ua->request($httpreq) };
 
-	if (!$response->is_success) {
-		print Dumper($response);
-		confess("Failed to reach api\n");
+	if (!defined($response) || !$response->is_success) {
+		carp("Failed to reach api\n");
+		return undef;
 	}
 
 	my $r=eval { from_json($response->decoded_content, { utf8  => 1 } ) };
-
-#	if (!defined($r->{status}) || $r->{status} ne 'ok') {
-#		confess(sprintf("Request failed - API returned cause: %s", $r->{error}));
-#	}
 
 	return $r;
 }
@@ -63,13 +60,13 @@ sub job_claim {
 	my $uri=sprintf("/v1/job/%s/claim/%s", $job->{id}, $opt->sysname);
 	my $result=api_get($opt, $ua, $uri);
 
-	return ($result->{status} = 'ok');
+	return (defined($result) && $result->{status} == 'ok');
 }
 
 sub job_return {
 	my ($ua, $opt, $job, $return) = @_;
 	my $uri=sprintf("/v1/job/%s/result/%s", $job->{id}, $return->{status});
-	my $result=api_post($opt, $ua, $uri, $return);
+	api_post($opt, $ua, $uri, $return);
 }
 
 sub job_get {
@@ -81,7 +78,11 @@ sub job_get {
 		type => "build"
 	});
 
-	return $result->{jobs}[0];
+	if (defined($result) && defined($result->{jobs})) {
+		return $result->{jobs}[0];
+	}
+
+	return undef;
 }
 
 sub artifact_dircreate {
@@ -175,6 +176,7 @@ sub artifact_push {
 my ($opt, $usage) = describe_options(
 	$FindBin::Script . ' %o <some-arg>',
 	[ 'verbose|v',		"Verbose", { default => 0 } ],
+	[ 'debug|d',		"Debug" ],
 	[ 'api=s',		"API Endpoint", { required => 1 } ],
 	[ 'sysname=s',		"System name for api", { default => hostname } ],
 	[ 'capability|c=s@',	"Capability to claim jobs" ],
@@ -186,8 +188,10 @@ my ($opt, $usage) = describe_options(
 
 my $ua=LWP::UserAgent->new();
 
-$ua->add_handler("request_send",  sub { shift->dump; return });
-$ua->add_handler("response_done", sub { shift->dump; return });
+if ($opt->debug) {
+	$ua->add_handler("request_send",  sub { shift->dump; return });
+	$ua->add_handler("response_done", sub { shift->dump; return });
+}
 
 while(42) {
 	my $js=job_get($ua, $opt);
