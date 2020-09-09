@@ -44,7 +44,7 @@ updatetree() {
 		git clone --bare ${GITTREE} ${TREECACHE}/${TREENAME} 
 	else
 		pushd ${TREECACHE}/${TREENAME}
-		git pull 
+		git fetch --all
 		popd
 	fi
 }
