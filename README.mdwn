@@ -54,12 +54,30 @@ able to achieve with "adduser docker flo" for example.
 
 For installation use this:
 
-	apt-get install docker-ce jq libhttp-dav-perl \
+	sudo apt-get install gnupg2 lsb-release jq libhttp-dav-perl \
 		libmodern-perl-perl libgetopt-long-descriptive-perl \
-		libwww-perl libhttp-dav-perl
+		libwww-perl libhttp-dav-perl curl libfile-slurp-perl \
+		libjson-perl
+	
+	echo deb [arch=amd64] https://download.docker.com/linux/debian buster stable \
+		| sudo tee -a /etc/apt/sources.list
+	
+	curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+		| sudo apt-key add -
+	
+	sudo apt-get update
+	
+	sudo apt-get -fuy install docker-ce 
+	
+	sudo adduser $(whoami) docker
+
+At this point you will need to log out and login again otherwise
+you wont be able to use docker as user.
 
 To prepare the docker images needed to build kernels 
 
+	git clone git://github.com/flohoff/build-boot-bot
+	cd build-boot-bot
 	buildbot/scripts/preparedocker
 
 Then run 
@@ -67,7 +85,7 @@ Then run
 	buildbot/buildbot \
 		--api https://nuc.dynamic.uucico.de/bbb \
 		-c docker:bbb/buster \
-		-b $PWD/scripts/build
+		-b $PWD/buildbot/scripts/build
 
 As soon as there are build jobs you should see builds beein scheduled.
 
