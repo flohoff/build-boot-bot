@@ -194,14 +194,19 @@ if ($opt->debug) {
 }
 
 while(42) {
+	printf("Trying to fetch job\n");
 	my $js=job_get($ua, $opt);
-	if (defined($js)) {
-		if (job_claim($ua, $opt, $js)) {
-			my $return=job_dispatch($ua, $opt, $js);
-			print Dumper($return);
-
-			job_return($ua, $opt, $js, $return);
-		}
+	if (!defined($js)) {
+		sleep(10);
+		next;
 	}
-	sleep(10);
+
+	if (!job_claim($ua, $opt, $js)) {
+		printf("Failed to claim job %s\n", $js->{id});
+		next;
+	}
+
+	my $return=job_dispatch($ua, $opt, $js);
+	print to_json($return, { pretty => 1 });
+	job_return($ua, $opt, $js, $return);
 }
