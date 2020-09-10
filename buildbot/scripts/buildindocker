@@ -36,6 +36,8 @@ configure() {
 	cp ${DEFCONFIG} .config
 	make ARCH=${ARCH} olddefconfig
 
+	cp .config /artifacts/dot-config
+
 	popd
 }
 
