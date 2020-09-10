@@ -1,0 +1,3 @@
+ARCH=mips
+DEFCONFIG=arch/mips/configs/ip32_defconfig
+MAKETARGETS="vmlinux modules"
