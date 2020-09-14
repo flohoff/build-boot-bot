@@ -89,6 +89,17 @@ Then run
 
 As soon as there are build jobs you should see builds beein scheduled.
 
+GPIO usage
+==========
+
+If you are using some kind of GPIOs to trigger external reset/power for your target add this udev rule to make shure you
+are allowed to trigger the gpios as user:
+
+	addgroup gpio
+	cat <<EOF >/etc/udev/rules.d/10-gpio.rules
+	KERNEL=="gpio*", MODE="0660", GROUP="gpio"
+	EOF
+
 Command line client
 ===================
 
