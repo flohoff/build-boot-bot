@@ -284,9 +284,46 @@ Other dependencies
 
 	apt-get install libclone-perl
 
+DHCP, TFTP and NFS
+------------------
+
+For machines doing network based booting via bootp/tftp/nfs
+configure the isc-dhcp-server to hand out bootp/dhcp leases to
+clients. You might want to hardcode the clients booting like this. 
+IP addresses must match your /etc/network/interfaces, nfs config,
+machine definition and possibly your PROM settings of your DUT.
+
+	subnet 172.27.72.0 netmask 255.255.255.0 {
+		range 172.27.72.64 172.27.72.128;
+
+		option routers 172.27.72.1;
+		next-server 172.27.72.1;
+
+		option domain-name-servers 192.168.178.1;
+		option domain-name "b1i.zz.de";
+	}
+
+	host p6064 {
+		hardware ethernet 00:40:bc:06:00:40;
+		fixed-address 172.27.72.32;
+		filename "/p6064/vmlinux";
+	}
+
+For tftp make shure you chroot into the tftp directory to
+make bootfile paths shorter. A lot of PROMs/Firmware has
+serious constraints for length of tftp filename.
+
+So make shure it is started with
+
+		TFTP_OPTIONS="--secure -v"
+
+For Debian 10/Buster this is configured in /etc/default/tftpd-hpa.
+For certain broken PROMs for example the Decstation you will also
+need to restrict the ports with --port-range
+
+
 GPIO usage
 ----------
-
 If you are using some kind of GPIOs to trigger external reset/power for your target add this udev rule to make shure you
 are allowed to trigger the gpios as user:
 
