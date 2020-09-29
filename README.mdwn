@@ -89,17 +89,6 @@ Then run
 
 As soon as there are build jobs you should see builds beein scheduled.
 
-GPIO usage
-==========
-
-If you are using some kind of GPIOs to trigger external reset/power for your target add this udev rule to make shure you
-are allowed to trigger the gpios as user:
-
-	addgroup gpio
-	cat <<EOF >/etc/udev/rules.d/10-gpio.rules
-	KERNEL=="gpio*", MODE="0660", GROUP="gpio"
-	EOF
-
 Command line client
 ===================
 
@@ -108,9 +97,9 @@ Command line client
 	bbb --api https://nuc.dynamic.uucico.de/bbb \
 		--submit --build \
 		-r docker:bbb/buster \
-		-v gitcommit=HEAD
-		-v gittree=git://git.kernel.org/pub/scm/linux/kernel/git/mips/linux.git
-		-v machine=sb1250-bigendian
+		-v commit=HEAD \
+		-v gittree=git://git.kernel.org/pub/scm/linux/kernel/git/mips/linux.git \
+		-v machine=sb1250-defconfig
 
 Build Boot Bot API
 ==================
@@ -283,6 +272,28 @@ Submit job
 		-r sb1250* \
 		-d ${jobid} \
 		-v kernel=${jobid}
+
+Bootbot
+=======
+
+For your dhcp/tftp setup
+	
+	apt-get install isc-dhcp-server tftpd-hpa
+
+Other dependencies
+
+	apt-get install libclone-perl
+
+GPIO usage
+----------
+
+If you are using some kind of GPIOs to trigger external reset/power for your target add this udev rule to make shure you
+are allowed to trigger the gpios as user:
+
+	addgroup gpio
+	cat <<EOF >/etc/udev/rules.d/10-gpio.rules
+	KERNEL=="gpio*", MODE="0660", GROUP="gpio"
+	EOF
 
 
 Ideas and Todos
