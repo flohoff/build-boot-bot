@@ -7,7 +7,7 @@ use Modern::Perl '2014';
 use experimental 'smartmatch';
 
 use FindBin qw($Bin);
-use lib "$Bin/lib";
+use lib "$Bin/../lib";
 
 use Data::Dumper;
 use Getopt::Long::Descriptive;
@@ -15,76 +15,13 @@ use Carp qw/confess/;
 use File::Slurp;
 use File::Path qw/rmtree/;
 use JSON;
-use LWP::UserAgent;
 use File::Temp qw/tempfile/;
 use HTTP::DAV;
 use POSIX;
 use Sys::Hostname;
 use Carp; 
 
-sub api_get {
-        my ($opt, $ua, $uri) = @_;
-
-        my $curi=sprintf("%s/%s", $opt->api, $uri);
-        my $r=eval { $ua->get($curi) };
-        if (!defined($r) || !$r->is_success) {
-                carp("Failed to reach api\n");
-		return undef;
-        }
-
-        my $data=eval { from_json($r->decoded_content, { utf8  => 1 } ) };
-
-        return $data;
-}
-
-sub api_post {
-	my ($opt, $ua, $uri, $content) = @_;
-
-	my $curi=sprintf("%s/%s", $opt->api, $uri);
-	my $httpreq = HTTP::Request->new(POST => $curi);
-	$httpreq->content_type('application/json;charset=UTF-8');
-	$httpreq->content(to_json($content));
-	my $response=eval { $ua->request($httpreq) };
-
-	if (!defined($response) || !$response->is_success) {
-		carp("Failed to reach api\n");
-		return undef;
-	}
-
-	my $r=eval { from_json($response->decoded_content, { utf8  => 1 } ) };
-
-	return $r;
-}
-
-sub job_claim {
-	my ($ua, $opt, $job) = @_;
-	my $uri=sprintf("/v1/job/%s/claim/%s", $job->{id}, $opt->sysname);
-	my $result=api_get($opt, $ua, $uri);
-
-	return (defined($result) && $result->{status} == 'ok');
-}
-
-sub job_return {
-	my ($ua, $opt, $job, $return) = @_;
-	my $uri=sprintf("/v1/job/%s/result/%s", $job->{id}, $return->{status});
-	api_post($opt, $ua, $uri, $return);
-}
-
-sub job_get {
-	my ($ua, $opt) = @_;
-
-	# '{ "type": "build", "capabilities": [ "docker:bbb/buster", "mips" ] }'
-	my $result=api_post($opt, $ua, "/v1/job/filter", {
-		capabilities => $opt->capability,
-		type => "build"
-	});
-
-	if (defined($result) && defined($result->{jobs})) {
-		return $result->{jobs}[0];
-	}
-
-	return undef;
-}
+use BBB::API;
 
 sub artifact_dircreate {
 	my ($opt, $job) = @_;
@@ -97,8 +34,8 @@ sub artifact_dircreate {
 	return $dir;
 }
 
-sub job_dispatch {
-	my ($ua, $opt, $job) = @_;
+sub dispatch {
+	my ($opt, $job) = @_;
 
 	my $result={};
 
@@ -187,27 +124,26 @@ my ($opt, $usage) = describe_options(
 	[ 'help',		"print usage message and exit", { shortcircuit => 1 } ],
 );
 
-my $ua=LWP::UserAgent->new();
-
-if ($opt->debug) {
-	$ua->add_handler("request_send",  sub { shift->dump; return });
-	$ua->add_handler("response_done", sub { shift->dump; return });
-}
+my $bbbapi=new BBB::API({
+	baseuri => $opt->api,
+	debug => $opt->debug
+});
 
 while(42) {
 	printf("Trying to fetch job\n");
-	my $js=job_get($ua, $opt);
+	my $js=$bbbapi->job_get($opt->capability, "build");
 	if (!defined($js)) {
 		sleep(10);
 		next;
 	}
 
-	if (!job_claim($ua, $opt, $js)) {
+	if (!$bbbapi->job_claim($opt->sysname, $js->{id})) {
 		printf("Failed to claim job %s\n", $js->{id});
 		next;
 	}
 
-	my $return=job_dispatch($ua, $opt, $js);
+	my $return=dispatch($opt, $js);
 	print to_json($return, { pretty => 1 });
-	job_return($ua, $opt, $js, $return);
+
+	$bbbapi->job_return($js->{id}, $return);
 }
