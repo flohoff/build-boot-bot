@@ -1,0 +1,29 @@
+#!/usr/bin/perl -w
+
+use strict;
+
+use FindBin;
+use lib "$FindBin::Bin/../lib";
+
+use BBB::SMLOM;
+use Data::Dumper;
+
+my $s=new BBB::SMLOM({
+	serial => "FT4Q5RK2",
+	powergpio => 0,
+	powerbuttongpio => 2,
+	resetgpio => 3,
+	gpiosudo => 1});
+
+print Dumper($s);
+
+$s->poweron();
+
+sleep(35);
+
+$s->reset();
+
+sleep(5);
+
+$s->poweroff();
+

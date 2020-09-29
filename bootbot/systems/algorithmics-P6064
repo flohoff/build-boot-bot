@@ -1,0 +1,33 @@
+{
+	"ipaddr": "172.27.72.32",
+	"bootfiles": {
+		"kernel": "/p6064/vmlinux"
+	},
+	"nfsroot": {
+		"type": "overlayfs",
+		"path": "/srv/nfs/p6064",
+		"basepath": "/srv/nfs/bigendianbasev1"
+	},
+	"console": {
+		"type": "smlom"
+	},
+	"poweron": {
+		"type": "smlom"
+	},
+	"poweroff": {
+		"type": "smlom"
+	},
+	"reset": {
+		"type": "smlom"
+	},
+	"smlom": {
+		"serial": "FT4Q5RK2",
+		"powergpio": 0,
+		"powerbuttongpio": 2,
+		"resetgpio": 3
+	},
+	"boot": {
+		"type": "pmon"
+		"cmd": [ "boot", "g -- root=/dev/nfs" ]
+	}
+}
