@@ -111,6 +111,20 @@ sub artifact_push {
 	return undef;
 }
 
+sub docker_image_find {
+	my ($capabilities) = @_;
+	open(my $fh, "docker image ls bbb/*|") || die "Unable to read docker images $!";
+	my @lines=<$fh>;
+	close($fh);
+
+	my @images=map { s/ .*$//; s/^/docker:/; $_; }
+			grep { /^bbb/ }
+			map { chomp(); $_ }
+			@lines;
+
+	push @{$capabilities}, @images;
+}
+
 my ($opt, $usage) = describe_options(
 	$FindBin::Script . ' %o <some-arg>',
 	[ 'verbose|v',		"Verbose", { default => 0 } ],
@@ -124,6 +138,13 @@ my ($opt, $usage) = describe_options(
 	[ 'help',		"print usage message and exit", { shortcircuit => 1 } ],
 );
 
+my @capabilities;
+if ($opt->capability) {
+	push @capabilities, @{$opt->capability}
+}
+
+docker_image_find(\@capabilities);
+
 my $bbbapi=new BBB::API({
 	baseuri => $opt->api,
 	debug => $opt->debug
@@ -131,7 +152,7 @@ my $bbbapi=new BBB::API({
 
 while(42) {
 	printf("Trying to fetch job\n");
-	my $js=$bbbapi->job_get($opt->capability, "build");
+	my $js=$bbbapi->job_get(\@capabilities, "build");
 	if (!defined($js)) {
 		sleep(10);
 		next;
