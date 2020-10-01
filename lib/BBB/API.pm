@@ -68,7 +68,7 @@ package BBB::API;
 		my $uri=sprintf("/v1/job/%s/claim/%s", $jobid, $sysname);
 		my $result=$self->api_get($uri);
 
-		return (defined($result) && $result->{status} == 'ok');
+		return (defined($result) && $result->{status} eq 'ok');
 	}
 
 	sub job_return {
