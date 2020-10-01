@@ -84,8 +84,10 @@ Then run
 
 	buildbot/buildbot \
 		--api https://nuc.dynamic.uucico.de/bbb \
-		-c docker:bbb/buster \
 		-b $PWD/buildbot/scripts/build
+
+You may list additional "capability" strings with "-c" which must
+match the job in the queue before this buildbot will claim the job.
 
 As soon as there are build jobs you should see builds beein scheduled.
 
@@ -96,10 +98,11 @@ Command line client
 
 	bbb --api https://nuc.dynamic.uucico.de/bbb \
 		--submit --build \
-		-r docker:bbb/buster \
+		-r docker:bbb/mipsgcc8 \
 		-v commit=HEAD \
 		-v gittree=git://git.kernel.org/pub/scm/linux/kernel/git/mips/linux.git \
-		-v machine=sb1250-defconfig
+		-v machine=sb1250-defconfig \
+		-v dockerimage=bbb/mipsgcc8
 
 Build Boot Bot API
 ==================
@@ -246,33 +249,6 @@ To submit a new job:
 Returns a status ok/fail, the job id and the job json itself
 
 
-Submit job
-==========
-	bbb-submit
-		Arguments
-			-j -> jobtype - string
-			-r -> requirement - may be listed as often as wanted
-			-v -> key/value variable setting
-			-d -> depends on jobid $foo
-		Returns
-			jobid
-
-	bbb-submit \
-		-j build \
-		-r docker:buster \
-		-r arch:mips \
-		-v gittree=git://git.kernel.org/pub/scm/linux/kernel/git/mips/linux.git \
-		-v commit=HEAD \
-		-v machine=sb1250-bigendian
-
-	Returns the job number
-
-	bbb-submit \
-		-j boot \
-		-r sb1250* \
-		-d ${jobid} \
-		-v kernel=${jobid}
-
 Bootbot
 =======
 
@@ -346,3 +322,4 @@ Ideas and Todos
 - cmdline client
   - download artifacts of job
   - cancel job
+- Artifact expiry
